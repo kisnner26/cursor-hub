@@ -27,7 +27,11 @@ Ejecuta `build.bat`. Usa el compilador de C# que ya trae Windows (.NET Framework
 
 ## Créditos
 
-- Autor: **[@kisnner26](https://github.com/kisnner26)** (diseño, icono y código).
+- Autor: **Kisnner Obando** ([@kisnner26](https://github.com/kisnner26)): diseño, icono y código.
 
 - Pack de ejemplo incluido: **Aesthetic pack <3** de **✧ • Skyler • ✧**, dominio público ([original](http://www.rw-designer.com/cursor-set/aesthetic-pack-3-not-completed)), completado en [aesthetic-pack-3-completed](https://github.com/kisnner26/aesthetic-pack-3-completed).
 - Estética de cuaderno de bocetos basada en [creador-de-flores](https://github.com/kisnner26/creador-de-flores).
+
+## Licencia
+
+MIT. Ver [LICENSE](LICENSE).
