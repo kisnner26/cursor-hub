@@ -11,6 +11,14 @@ using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
+[assembly: AssemblyTitle("Cursor Hub")]
+[assembly: AssemblyDescription("Importa packs de cursores y aplícalos con un clic.")]
+[assembly: AssemblyProduct("Cursor Hub")]
+[assembly: AssemblyCompany("kisnner26")]
+[assembly: AssemblyCopyright("© 2026 kisnner26 · github.com/kisnner26")]
+[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
+
 namespace CursorHub
 {
     class Role
@@ -262,9 +270,47 @@ namespace CursorHub
 
     static class Theme
     {
-        // paleta del repo "creador-de-flores": papel crema, tinta oscura, trazos finos
-        public static readonly Color Paper = Color.FromArgb(245, 240, 232), PaperDark = Color.FromArgb(232, 224, 208),
-            Ink = Color.FromArgb(26, 18, 8), Mid = Color.FromArgb(90, 74, 48), Faint = Color.FromArgb(200, 191, 170);
+        // paleta del repo "creador-de-flores": papel crema, tinta oscura, trazos finos.
+        // el modo oscuro sigue su escenario "noche": papel tostado y tinta crema
+        public static Color Paper, PaperDark, Ink, Mid, Faint, Tile1, Tile2, ListBg;
+        public static bool Dark { get; private set; }
+        static Theme() { SetDark(false); }
+
+        public static void SetDark(bool dark)
+        {
+            Dark = dark;
+            if (dark)
+            {
+                Paper = Color.FromArgb(30, 24, 16); PaperDark = Color.FromArgb(46, 38, 27);
+                Ink = Color.FromArgb(238, 230, 214); Mid = Color.FromArgb(180, 164, 134); Faint = Color.FromArgb(84, 72, 54);
+                Tile1 = Color.FromArgb(16, 12, 7); Tile2 = Color.FromArgb(40, 32, 22); ListBg = Color.FromArgb(34, 28, 20);
+            }
+            else
+            {
+                Paper = Color.FromArgb(245, 240, 232); PaperDark = Color.FromArgb(232, 224, 208);
+                Ink = Color.FromArgb(26, 18, 8); Mid = Color.FromArgb(90, 74, 48); Faint = Color.FromArgb(200, 191, 170);
+                Tile1 = Color.FromArgb(52, 40, 26); Tile2 = Color.FromArgb(26, 18, 8); ListBg = Color.FromArgb(241, 236, 227);
+            }
+            if (noise != null) { noise.Dispose(); noise = null; }
+        }
+
+        // preferencia guardada: "dark", "light" o nada (sigue a Windows)
+        static string SettingsFile { get { return Path.Combine(Store.Root, "theme.txt"); } }
+        public static bool LoadPreference()
+        {
+            try { if (File.Exists(SettingsFile)) return File.ReadAllText(SettingsFile).Trim() == "dark"; } catch { }
+            try
+            {
+                using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+                    if (k != null) { var v = k.GetValue("AppsUseLightTheme"); if (v is int) return (int)v == 0; }
+            }
+            catch { }
+            return false;
+        }
+        public static void SavePreference(bool dark)
+        {
+            try { Directory.CreateDirectory(Store.Root); File.WriteAllText(SettingsFile, dark ? "dark" : "light"); } catch { }
+        }
 
         // todo se diseña en píxeles lógicos (96 dpi) y se escala con K
         static float k;
@@ -288,7 +334,7 @@ namespace CursorHub
             if (noise == null)
             {
                 var bmp = new Bitmap(160, 160); var rnd = new Random(7);
-                for (int y = 0; y < 160; y++) for (int x = 0; x < 160; x++) bmp.SetPixel(x, y, Color.FromArgb(rnd.Next(0, 12), 70, 50, 20));
+                for (int y = 0; y < 160; y++) for (int x = 0; x < 160; x++) bmp.SetPixel(x, y, Dark ? Color.FromArgb(rnd.Next(0, 9), 255, 236, 200) : Color.FromArgb(rnd.Next(0, 12), 70, 50, 20));
                 noise = new TextureBrush(bmp);
             }
             using (var b = new SolidBrush(Paper)) g.FillRectangle(b, r);
@@ -407,7 +453,7 @@ namespace CursorHub
             if (hover) using (var b = new SolidBrush(Color.FromArgb(70, Theme.PaperDark))) g.FillRectangle(b, r);
             using (var pen = new Pen(hover ? Theme.Ink : Theme.Faint, 1f)) g.DrawRectangle(pen, r.X, r.Y, r.Width, r.Height);
             var tile = new RectangleF(10, 10, 88, 88);
-            using (var b = new LinearGradientBrush(tile, Color.FromArgb(52, 40, 26), Theme.Ink, 60f)) g.FillRectangle(b, tile);
+            using (var b = new LinearGradientBrush(tile, Theme.Tile1, Theme.Tile2, 60f)) g.FillRectangle(b, tile);
             if (Preview != null) g.DrawImage(Preview, tile.X + 12, tile.Y + 12, 64, 64);
             float tx = tile.Right + 12, tw = LW - tx - 10;
             using (var f = Theme.Serif(15f, FontStyle.Regular))
@@ -467,12 +513,62 @@ namespace CursorHub
         }
     }
 
+    // luna / sol dibujados a trazo para cambiar de modo
+    class ThemeToggle : Control
+    {
+        bool hover;
+        public ThemeToggle() { SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true); Size = new Size(Theme.S(24), Theme.S(24)); Cursor = Cursors.Hand; }
+        protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { hover = false; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics; Theme.PaintPaper(g, ClientRectangle); Theme.Begin(g);
+            using (var pen = new Pen(hover ? Theme.Ink : Theme.Mid, hover ? 1.4f : 1.1f))
+            {
+                if (Theme.Dark) // sol: pasa a modo claro
+                {
+                    g.DrawEllipse(pen, 8, 8, 8, 8);
+                    for (int i = 0; i < 8; i++)
+                    {
+                        double a = i * Math.PI / 4; float c = (float)Math.Cos(a), s = (float)Math.Sin(a);
+                        g.DrawLine(pen, 12 + c * 6.5f, 12 + s * 6.5f, 12 + c * 9.5f, 12 + s * 9.5f);
+                    }
+                }
+                else // luna: pasa a modo oscuro
+                {
+                    // media luna: círculo exterior sin la parte que tapa el interior, y viceversa
+                    using (var outer = new GraphicsPath()) using (var inner = new GraphicsPath())
+                    {
+                        outer.AddEllipse(5, 5, 14, 14); inner.AddEllipse(9.5f, 2.5f, 12, 12);
+                        var st = g.Save();
+                        g.SetClip(inner, CombineMode.Exclude); g.DrawEllipse(pen, 5, 5, 14, 14); g.Restore(st);
+                        st = g.Save();
+                        g.SetClip(outer, CombineMode.Intersect); g.DrawEllipse(pen, 9.5f, 2.5f, 12, 12); g.Restore(st);
+                    }
+                }
+            }
+        }
+    }
+
+    class InkMenuRenderer : ToolStripRenderer
+    {
+        protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e) { using (var b = new SolidBrush(Theme.Paper)) e.Graphics.FillRectangle(b, e.AffectedBounds); }
+        protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e) { using (var p = new Pen(Theme.Faint)) e.Graphics.DrawRectangle(p, 0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1); }
+        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+        {
+            if (e.Item.Selected) using (var b = new SolidBrush(Theme.PaperDark)) e.Graphics.FillRectangle(b, 2, 0, e.Item.Width - 4, e.Item.Height);
+        }
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e) { e.TextColor = Theme.Ink; base.OnRenderItemText(e); }
+    }
+
     class MainForm : Form
     {
         ListBox list = new ListBox();
         PaperFlow grid = new PaperFlow();
         PaperPanel head, foot;
         string status = "";
+        const string Credit = "creado por @kisnner26", CreditUrl = "https://github.com/kisnner26";
+        RectangleF creditRect; bool creditHover;
         InkButton apply = new InkButton(), restore = new InkButton(), import = new InkButton(), add = new InkButton(), dup = new InkButton(), del = new InkButton();
         List<Pack> packs = new List<Pack>();
         Pack Current { get { return list.SelectedIndex >= 0 && list.SelectedIndex < packs.Count ? packs[list.SelectedIndex] : null; } }
@@ -482,6 +578,23 @@ namespace CursorHub
             new[]{"Texto y precisión","IBeam","Crosshair","NWPen"},
             new[]{"Tamaño y movimiento","SizeNS","SizeWE","SizeNWSE","SizeNESW","SizeAll"},
             new[]{"Extras","UpArrow","Pin","Person"} };
+
+        [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] static extern int SetWindowTheme(IntPtr h, string app, string idList);
+        ThemeToggle toggle = new ThemeToggle();
+
+        void ApplyTheme()
+        {
+            BackColor = Theme.Mid; list.BackColor = Theme.ListBg;
+            // barras de desplazamiento oscuras en Windows 10/11
+            try { SetWindowTheme(grid.Handle, Theme.Dark ? "DarkMode_Explorer" : "Explorer", null); SetWindowTheme(list.Handle, Theme.Dark ? "DarkMode_Explorer" : "Explorer", null); } catch { }
+            Invalidate(true);
+        }
+
+        void ToggleTheme()
+        {
+            Theme.SetDark(!Theme.Dark); Theme.SavePreference(Theme.Dark);
+            ApplyTheme(); Say(Theme.Dark ? "modo noche." : "modo día.");
+        }
 
         [DllImport("user32.dll")] static extern bool ReleaseCapture();
         [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int msg, int w, int l);
@@ -519,7 +632,7 @@ namespace CursorHub
         {
             FormBorderStyle = FormBorderStyle.None; Padding = new Padding(1); // 1px de borde tipo trazo
             Text = "Cursor Hub"; ClientSize = new Size(S(1120), S(740)); MinimumSize = new Size(S(900), S(600));
-            StartPosition = FormStartPosition.CenterScreen; BackColor = Theme.Mid; DoubleBuffered = true;
+            StartPosition = FormStartPosition.CenterScreen; Theme.SetDark(Theme.LoadPreference()); BackColor = Theme.Mid; DoubleBuffered = true;
             AllowDrop = true; DragEnter += OnDragEnter; DragDrop += OnDragDrop;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
@@ -530,7 +643,9 @@ namespace CursorHub
             var chrome = new PaperPanel { Dock = DockStyle.Top, Height = S(120) };
             var wb = new WindowButtons { Left = 0, Top = S(16) };
             wb.CloseClick += delegate { Close(); }; wb.MinClick += delegate { WindowState = FormWindowState.Minimized; }; wb.MaxClick += delegate { ToggleMax(); };
-            chrome.Controls.Add(wb); chrome.MouseDown += Drag;
+            toggle.Left = S(202); toggle.Top = S(14); toggle.Click += delegate { ToggleTheme(); };
+            new ToolTip().SetToolTip(toggle, "Cambiar modo día / noche");
+            chrome.Controls.Add(wb); chrome.Controls.Add(toggle); chrome.MouseDown += Drag;
             chrome.Paint += delegate (object o, PaintEventArgs e)
             {
                 var g = e.Graphics; Theme.Begin(g); float w = chrome.Width / Theme.K;
@@ -546,7 +661,7 @@ namespace CursorHub
                 using (var pen = new Pen(Theme.Faint)) g.DrawLine(pen, 0, 29, hint.Width / Theme.K, 29);
             };
 
-            list.Dock = DockStyle.Fill; list.BorderStyle = BorderStyle.None; list.BackColor = Color.FromArgb(241, 236, 227); list.IntegralHeight = false;
+            list.Dock = DockStyle.Fill; list.BorderStyle = BorderStyle.None; list.BackColor = Theme.ListBg; list.IntegralHeight = false;
             list.DrawMode = DrawMode.OwnerDrawFixed; list.ItemHeight = S(56);
             list.DrawItem += DrawPackItem; list.SelectedIndexChanged += delegate { RefreshCards(); };
             var lpad = new PaperPanel { Dock = DockStyle.Fill, Padding = Theme.S(0, 10, 0, 0) }; lpad.Controls.Add(list);
@@ -581,14 +696,31 @@ namespace CursorHub
             {
                 var g = e.Graphics; Theme.Begin(g); float w = foot.Width / Theme.K;
                 using (var pen = new Pen(Theme.Faint)) g.DrawLine(pen, 0, 0.5f, w, 0.5f);
-                using (var f = Theme.Body(15f, FontStyle.Italic)) Theme.Text(g, status, f, Theme.Mid, new RectangleF(34, 11, w - 50, 24), false);
+                using (var f = Theme.Body(15f, FontStyle.Italic))
+                {
+                    float cw = g.MeasureString(Credit, f).Width;
+                    creditRect = new RectangleF(w - 34 - cw, 9, cw, 24);
+                    Theme.Text(g, status, f, Theme.Mid, new RectangleF(34, 11, creditRect.X - 60, 24), false);
+                    using (var b = new SolidBrush(creditHover ? Theme.Ink : Theme.Mid)) g.DrawString(Credit, f, b, creditRect.X, 11);
+                    if (creditHover) using (var pen = new Pen(Theme.Ink, 1f)) g.DrawLine(pen, creditRect.X + 3, 31, creditRect.Right - 5, 31);
+                }
+            };
+            foot.MouseMove += delegate (object o, MouseEventArgs e)
+            {
+                bool h = creditRect.Contains(e.X / Theme.K, e.Y / Theme.K);
+                if (h != creditHover) { creditHover = h; foot.Cursor = h ? Cursors.Hand : Cursors.Default; foot.Invalidate(); }
+            };
+            foot.MouseLeave += delegate { if (creditHover) { creditHover = false; foot.Cursor = Cursors.Default; foot.Invalidate(); } };
+            foot.MouseClick += delegate (object o, MouseEventArgs e)
+            {
+                if (creditRect.Contains(e.X / Theme.K, e.Y / Theme.K)) try { System.Diagnostics.Process.Start(CreditUrl); } catch { }
             };
 
             // ---- tarjetas ----
             grid.Dock = DockStyle.Fill; grid.AutoScroll = true; grid.Padding = Theme.S(30, 0, 0, 16);
             grid.Resize += delegate { foreach (Control c in grid.Controls) if (c is SectionHeader) c.Width = HeaderWidth(); };
             Controls.Add(grid); Controls.Add(head); Controls.Add(foot); Controls.Add(side);
-            Load += delegate { Run(delegate { Store.SeedSample(); Reload(null); Say("elige un pack y pulsa aplicar."); }); };
+            Load += delegate { ApplyTheme(); Run(delegate { Store.SeedSample(); Reload(null); Say("elige un pack y pulsa aplicar."); }); };
         }
 
         int HeaderWidth()
@@ -694,7 +826,7 @@ namespace CursorHub
 
         void ImportClick(object s, EventArgs e)
         {
-            var menu = new ContextMenuStrip();
+            var menu = new ContextMenuStrip { Renderer = new InkMenuRenderer(), ShowImageMargin = false, Font = Theme.Body(15f, FontStyle.Regular) };
             menu.Items.Add("Archivo (.zip / .crs)...", null, delegate
             {
                 using (var d = new OpenFileDialog { Filter = "Packs (*.zip;*.crs)|*.zip;*.crs", Multiselect = true })
